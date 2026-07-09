@@ -18,9 +18,10 @@ from solution_check import check_solution
 from utkoma import generate_output
 
 SOLVER_MODULES = {
-  'highs': 'model_generator_highs',    # Sjálfgefið - frjálst, ókeypis, og nálægt Gurobi í hraða (sjá benchmark.py)
-  'gurobi': 'model_generator',          # Hraðast, en þarfnast Gurobi-leyfis (sjá gurobi.env)
-  'scip': 'model_generator_scip',        # Frjálst og ókeypis, en mun hægara en hin tvö
+  'highs': 'model_generator_highs',                    # Sjálfgefið - frjálst, ókeypis, og nálægt Gurobi í hraða (sjá benchmark.py)
+  'highs-parallel': 'model_generator_highs_parallel',    # Sama og 'highs' en þvingar samhliða MIP-leit ('parallel'='on')
+  'gurobi': 'model_generator',                            # Hraðast, en þarfnast Gurobi-leyfis (sjá gurobi.env)
+  'scip': 'model_generator_scip',                          # Frjálst og ókeypis, en mun hægara en hin tvö
 }
 
 def build_date_lookup(input_path):

@@ -67,7 +67,7 @@ def objective_value(likan, einingarnafn):
     return likan.ObjVal
   if einingarnafn == 'model_generator_scip':
     return likan.getObjVal()
-  if einingarnafn == 'model_generator_highs':
+  if einingarnafn.startswith('model_generator_highs'):  # nær bæði 'highs' og 'highs_parallel'
     return likan.getObjectiveValue()
   return None
 
@@ -96,15 +96,17 @@ def main():
   prenta_samantekt(nidurstodur)
 
 def prenta_samantekt(nidurstodur):
-  print('=' * 78)
-  print(f'{"Leysir":<10} {"Uppbygging":>12} {"Lausn":>10} {"Samtals":>10} {"Hlutlægisgildi":>18}')
-  print('-' * 78)
+  breidd = max(16, max((len(r['leysir']) for r in nidurstodur), default=0) + 1)
+  linubreidd = breidd + 66
+  print('=' * linubreidd)
+  print(f'{"Leysir":<{breidd}} {"Uppbygging":>12} {"Lausn":>10} {"Samtals":>10} {"Hlutlægisgildi":>18}')
+  print('-' * linubreidd)
   for r in nidurstodur:
     if 'villa' in r:
-      print(f'{r["leysir"]:<10} {r["villa"]}')
+      print(f'{r["leysir"]:<{breidd}} {r["villa"]}')
       continue
-    print(f'{r["leysir"]:<10} {r["uppbygging_s"]:>11.2f}s {r["lausn_s"]:>9.2f}s {r["samtals_s"]:>9.2f}s {r["hlutlaegisgildi"]:>18.2f}')
-  print('=' * 78)
+    print(f'{r["leysir"]:<{breidd}} {r["uppbygging_s"]:>11.2f}s {r["lausn_s"]:>9.2f}s {r["samtals_s"]:>9.2f}s {r["hlutlaegisgildi"]:>18.2f}')
+  print('=' * linubreidd)
 
   gild = [r for r in nidurstodur if 'villa' not in r and r['bestalausn']]
   if len(gild) > 1:

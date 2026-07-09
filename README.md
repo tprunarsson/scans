@@ -36,14 +36,15 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r src/requirements.txt
 ```
 
-Þrír leysar eru studdir - allir skila sömu bestu lausn (staðfest með
+Fjórir leysar eru studdir - allir skila sömu bestu lausn (staðfest með
 `benchmark.py`, sjá að neðan), aðeins hraði og leyfiskröfur eru ólíkar:
 
-| `--solver` | Pakki | Leyfi | Hraði á t0 (109 nemendur, 4 námskeið) |
+| `--solver` | Pakki | Leyfi | Hraði á dæminu (109 nemendur, 4 námskeið) |
 |---|---|---|---|
-| `highs` (sjálfgefið) | highspy | Frjálst og ókeypis | Nálægt Gurobi (~1s lausn) |
+| `highs` (sjálfgefið) | highspy | Frjálst og ókeypis | Nálægt Gurobi (~1-3s lausn) |
+| `highs-parallel` | highspy | Frjálst og ókeypis | Sama og `highs` - engin mælanlegur munur á þessu líkani, sjá að neðan |
 | `gurobi` | gurobipy | Þarfnast leyfis (`src/gurobi.env`) | Hraðast - lausn á broti úr sekúndu |
-| `scip` | pyscipopt | Frjálst og ókeypis | Hægast (~50s lausn á sama gagnasafni) |
+| `scip` | pyscipopt | Frjálst og ókeypis | Hægast (~20-50s lausn á sama gagnasafni) |
 
 `highs` er sjálfgefið því það þarfnast ekki leyfis en er samt nálægt Gurobi í
 hraða (sjá `benchmark.py` niðurstöður að ofan) - `scip` er til taks en mun
@@ -55,7 +56,8 @@ Skráaryfirlit:
 | `main.py` | Skipanalínuforritið - les, leysir, skrifar |
 | `benchmark.py` | Ber saman uppbyggingar-/lausnartíma og hlutlægisgildi allra tiltækra leysa á sama input.json |
 | `innlestur.py` | Les input.json, sannreynir gögn, byggir upp `ModelData` |
-| `model_generator.py` / `model_generator_scip.py` / `model_generator_highs.py` | Sjálft MIP-líkanið, sama uppbygging í öllum þremur, ólíkir leysar |
+| `model_generator.py` / `model_generator_scip.py` / `model_generator_highs.py` | Sjálft MIP-líkanið, sama uppbygging í öllum, ólíkir leysar |
+| `model_generator_highs_parallel.py` | Sama og `model_generator_highs.py`, en þvingar HiGHS til að nota samhliða leit (sjá "Að bera saman leysa" að neðan) |
 | `solution_check.py` | Mannlæsilegar aðvaranir um mjúkar skorður sem ekki tókst að uppfylla |
 | `utkoma.py` | Býr til output.json úr leystu líkani |
 | `model_data.py`, `deild.py`, `nemandi.py`, `vikur.py`, `postur.py` | Gagnaform og hjálparföll (sjá útskýringar í hverri skrá) |
@@ -66,28 +68,49 @@ nemanda/námskeið/viku/deild) er útskýrt í `model_data.py`.
 ### Að bera saman leysa
 
 ```
-python3 benchmark.py ../data/t0/input.json
+python3 benchmark.py ../data/example_input.json
 ```
 
-Keyrir líkanið með öllum þremur leysum í sömu Python-lotu (sanngjarnari
-samanburður en að keyra hvern fyrir sig - forðast endurtekinn
-túlk-ræsingarkostnað), mælir uppbyggingar- og lausnartíma sitt í hvoru lagi,
-og athugar að öll skili sama hlutlægisgildi - það er sjálfstæð staðfesting
-þess að model_generator*.py þýðingarnar þrjár séu í raun samhljóða, óháð
-hraðamun þeirra. Hægt að velja undirmengi leysa: `--solvers gurobi,highs`.
+Keyrir líkanið með öllum leysum í sömu Python-lotu (sanngjarnari samanburður
+en að keyra hvern fyrir sig - forðast endurtekinn túlk-ræsingarkostnað),
+mælir uppbyggingar- og lausnartíma sitt í hvoru lagi, og athugar að öll skili
+sama hlutlægisgildi - það er sjálfstæð staðfesting þess að
+model_generator*.py þýðingarnar séu í raun samhljóða, óháð hraðamun þeirra.
+Hægt að velja undirmengi leysa: `--solvers gurobi,highs`.
 
-Dæmi um niðurstöðu á `data/t0` (109 nemendur, 4 námskeið, Apple M4 Max) -
-tímar eru vélarháðir og eiga eftir að hækka á stærri gagnasöfnum, en
-innbyrðis munur leysa ætti að haldast svipaður:
+`highs-parallel` er sama líkan og `highs` en þvingar HiGHS til að nota
+samhliða MIP-leit (`parallel`='on') í stað þess að láta HiGHS ákveða sjálft
+(`'choose'`, sjálfgefið). Á þessu líkani gerir það engan mælanlegan mun -
+forúrvinnslan (presolve) leysir vandamálið nánast alveg áður en
+greinun-og-mörkun þarf yfirhöfuð að byrja, svo það er ekkert tré eftir sem
+er þess virði að leita í samhliða. HiGHS-eigin sjálfvirka val ("choose") var
+sem sagt réttmætt hér - staðfest með eigin log-skilaboðum HiGHS:
 
 ```
-==============================================================================
-Leysir       Uppbygging      Lausn    Samtals     Hlutlægisgildi
-------------------------------------------------------------------------------
-gurobi            0.27s      0.12s      0.39s        -1274695.00
-highs             0.26s      0.79s      1.05s        -1274695.00
-scip              0.29s     52.84s     53.13s        -1274695.00
-==============================================================================
+# --solver highs (sjálfgefið, 'parallel'='choose'):
+Thread count 7 (of 14 threads). Using 1 max workers. Parallel search off
+
+# --solver highs-parallel ('parallel' þvingað á 'on'):
+Thread count 7 (of 14 threads). Using 12 max workers. Parallel search on
+```
+
+Munurinn í stillingunni er raunverulegur (1 á móti 12 verkþráðum), en skilar
+sér ekki í mælanlegum hraðamun (2.96s á móti 2.94s í töflunni að neðan) -
+HiGHS ákvað réttilega sjálft að samhliða leit borgaði sig ekki hér.
+
+Dæmi um niðurstöðu á `data/example_input.json` (109 nemendur, 4 námskeið,
+Apple M4 Max) - tímar eru vélarháðir og eiga eftir að hækka á stærri
+gagnasöfnum, en innbyrðis munur leysa ætti að haldast svipaður:
+
+```
+==================================================================================
+Leysir             Uppbygging      Lausn    Samtals     Hlutlægisgildi
+----------------------------------------------------------------------------------
+gurobi                  0.28s      0.12s      0.41s        -1274695.00
+highs                   0.27s      2.69s      2.96s        -1274695.00
+highs-parallel          0.26s      2.67s      2.94s        -1274695.00
+scip                    0.30s     18.98s     19.28s        -1274695.00
+==================================================================================
 Allir leysar fundu sama hlutlægisgildi - líkönin eru samhljóða.
 ```
 
