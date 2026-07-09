@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+data/*/sameinad.xlsx
+gas/.clasp.json
+**/~$*
+*.xlsx
+
+# Real student data (names, kennitala, phone numbers) - never commit these.
+# Only data/example_input.json (root of data/, not data/<case>/) is the
+# checked-in, anonymized stand-in - this pattern only matches one level
+# under data/, so it's untouched.
+data/*/input*.json
+data/*/output*.json

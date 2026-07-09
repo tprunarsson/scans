@@ -1,0 +1,17 @@
+<p>Ýttu á hnappinn til að sækja <b>input.json</b> beint á tölvuna þína.</p>
+<button id="btn">Sækja input.json</button>
+<p id="status"></p>
+<script>
+  var data = <?!= dataJson ?>;
+  document.getElementById('btn').onclick = function() {
+    var blob = new Blob([data], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'input.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    document.getElementById('status').innerText = 'Sótt - athugaðu niðurhalsmöppuna þína.';
+  };
+</script>

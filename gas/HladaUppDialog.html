@@ -1,0 +1,23 @@
+<p>Veldu <b>output.json</b> skrána af tölvunni þinni.</p>
+<input type="file" id="file" accept="application/json,.json">
+<p id="status"></p>
+<script>
+  document.getElementById('file').addEventListener('change', function(e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    document.getElementById('status').innerText = 'Hleð inn...';
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          document.getElementById('status').innerText = msg;
+          setTimeout(function() { google.script.host.close(); }, 1500);
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('status').innerText = 'Villa: ' + err.message;
+        })
+        .processOutputJson(evt.target.result);
+    };
+    reader.readAsText(f);
+  });
+</script>

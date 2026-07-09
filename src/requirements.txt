@@ -1,0 +1,11 @@
+# Alltaf nauðsynlegt
+pandas>=2,<3   # >=3 breytir hegðun á fillna() sem innlestur.py reiðir sig á
+
+# Aðeins nauðsynlegt fyrir --solver gurobi (þarfnast leyfis, sjá gurobi.env)
+gurobipy
+
+# Aðeins nauðsynlegt fyrir --solver scip (frjálst og ókeypis, ekkert leyfi þarf)
+pyscipopt
+
+# Aðeins nauðsynlegt fyrir --solver highs (frjálst og ókeypis, ekkert leyfi þarf)
+highspy
