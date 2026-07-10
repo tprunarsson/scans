@@ -35,7 +35,17 @@ def build_date_lookup(input_path):
     namskeid = row.get('namskeid')
     vika = row.get('vika')
     if namskeid is not None and vika is not None:
-      uppfletting[(namskeid, vika)] = row.get('dagsetning', '')
+      # Sum söguleg gögn vantar dagsetningu alveg (t.d. docs/3year - stundatafla
+      # án Dagsetning dálks fyrir flestar línur). Í input.json verður það þá
+      # ekki auður strengur heldur JSON null (-> Python None) eða jafnvel NaN
+      # (fljótandi tala, sem er "satt" í Python - "if not dags" grípur það EKKI),
+      # svo hér er sérstaklega athugað að gildið sé raunverulegur strengur áður
+      # en það er notað - annars er meðhöndlað sem "engin dagsetning skráð" (''),
+      # nákvæmlega eins og build_model_data() gerir annars staðar.
+      dags = row.get('dagsetning', '')
+      if not isinstance(dags, str):
+        dags = ''
+      uppfletting[(namskeid, vika)] = dags
   return uppfletting
 
 def json_default(o):

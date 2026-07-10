@@ -132,7 +132,10 @@ def generate_model(M):
       for c in M.klinik
       for v in M.klinik[c] if v > 0
       for d in M.klinik[c][v]
-      if len(set(M.fri_osk[s]) & set(M.klinik_vikur[c][v])) > 0
+      # .get() en ekki bein vísun: MRS/Deildir gögnin (M.klinik) geta haft viku
+      # sem klinik_vikur (byggt úr stundatöflu) þekkir ekki - það er þegar
+      # flaggað sem aðvörun í innlestur.py, en má samt ekki hrynja hér.
+      if len(set(M.fri_osk[s]) & M.klinik_vikur.get(c, {}).get(v, set())) > 0
     ) * vigt_fri_osk
 
     # + gp.quicksum(
@@ -141,62 +144,80 @@ def generate_model(M):
     , gp.GRB.MINIMIZE
   )
 
+  # Skorður eru bættar við með handvirkum lykkjum og skýrum nöfnum (í stað
+  # addConstrs-safnkalla) svo greining á óstuðlanleika (computeIIS(), sjá
+  # iis_greining.py) skili læsilegum nöfnum eins og "c1_skraning_..." í stað
+  # sjálfvirkra Gurobi-nafna eins og "R1523". Sama lykkjubygging og notuð er í
+  # model_generator_scip.py/model_generator_highs.py - allar þrjár skrár
+  # standa því saman sem staðfesting hvor á annarri.
+
   # 1. Allir nemendur fá klíník sem þau eru skráð í
   # (nákvæmlega einu sinni per klíník)
-  likan.addConstrs(
-    gp.quicksum(
-      x[s,c,v,d] for v in M.klinik[c] for d in M.klinik[c][v]
-    ) == M.nemendaskraning[s][c]
-    for s in M.nemendur
-    for c in M.klinik
-  )
+  for s in M.nemendur:
+    for c in M.klinik:
+      likan.addConstr(
+        gp.quicksum(x[s,c,v,d] for v in M.klinik[c] for d in M.klinik[c][v]) == M.nemendaskraning[s][c],
+        name=f'c1_skraning_{s}_{c}'
+      )
 
   # 2. Fjöldi nemenda í klíník er ekki meiri en pláss
-  likan.addConstrs(
-    gp.quicksum(
-      x[s,c,v,d] for s in M.nemendur
-    ) <= M.klinik[c][v][d].plass
-    for c in M.klinik
-    for v in M.klinik[c]
-    for d in M.klinik[c][v]
-  )
+  for c in M.klinik:
+    for v in M.klinik[c]:
+      for d in M.klinik[c][v]:
+        likan.addConstr(
+          gp.quicksum(x[s,c,v,d] for s in M.nemendur) <= M.klinik[c][v][d].plass,
+          name=f'c2_plass_{c}_{v}_{d}'
+        )
 
   # 3. Engin skörun á milli klínískra námskeiða
-  likan.addConstrs(
-    gp.quicksum(
-      x[s,c1,v1,d1] for d1 in M.klinik[c1][v1]
-    ) <= 1 - gp.quicksum(
-      x[s,c2,v2,d2] for d2 in M.klinik[c2][v2]
-    ) for s in M.nemendur
-    for c1 in M.klinik_vikur if M.nemendaskraning[s][c1] == 1
-    for c2 in M.klinik_vikur if M.nemendaskraning[s][c2] == 1
-    for v1 in M.klinik_vikur[c1] if v1 > 0
-    for v2 in M.klinik_vikur[c2] if v2 > 0
-    if (c1 != c2)
-    if len(M.klinik_vikur[c1][v1] & M.klinik_vikur[c2][v2]) > 0
-  )
+  for s in M.nemendur:
+    for c1 in M.klinik_vikur:
+      if M.nemendaskraning[s][c1] != 1:
+        continue
+      for c2 in M.klinik_vikur:
+        if M.nemendaskraning[s][c2] != 1:
+          continue
+        if c1 == c2:
+          continue
+        for v1 in M.klinik_vikur[c1]:
+          if v1 <= 0:
+            continue
+          for v2 in M.klinik_vikur[c2]:
+            if v2 <= 0:
+              continue
+            if len(M.klinik_vikur[c1][v1] & M.klinik_vikur[c2][v2]) == 0:
+              continue
+            likan.addConstr(
+              gp.quicksum(x[s,c1,v1,d1] for d1 in M.klinik[c1][v1])
+              <= 1 - gp.quicksum(x[s,c2,v2,d2] for d2 in M.klinik[c2][v2]),
+              name=f'c3_skorun_{s}_{c1}_{v1}_{c2}_{v2}'
+            )
 
   # 4. Engin skörun á milli klínískra námskeiða og valnámskeiða
-  likan.addConstrs(
-    gp.quicksum(
-      x[s,c,v,d] for d in M.klinik[c][v]
-    ) == 0
-    for s in M.nemendur
-    for c in M.klinik_vikur if M.nemendaskraning[s][c] == 1
-    for v in M.klinik_vikur[c]
-    if len(set(M.klinik_vikur[c][v]) & M.nemendur_val_vikur[s]) > 0
-  )
+  for s in M.nemendur:
+    for c in M.klinik_vikur:
+      if M.nemendaskraning[s][c] != 1:
+        continue
+      for v in M.klinik_vikur[c]:
+        if len(set(M.klinik_vikur[c][v]) & M.nemendur_val_vikur[s]) == 0:
+          continue
+        likan.addConstr(
+          gp.quicksum(x[s,c,v,d] for d in M.klinik[c][v]) == 0,
+          name=f'c4_val_skorun_{s}_{c}_{v}'
+        )
 
   # 5. Skilyrt frí
-  likan.addConstr(
-    gp.quicksum(
-      x[s,c,v,d] for s in M.fri_skilyrt if s in M.nemendur
-      for c in M.klinik
-      for v in M.klinik[c] if v > 0
-      for d in M.klinik[c][v]
-      if len(set(M.fri_skilyrt[s]) & set(M.klinik_vikur[c][v])) > 0
-    ) == 0
-  )
+  for s in M.fri_skilyrt:
+    if s not in M.nemendur:
+      continue
+    for c in M.klinik:
+      for v in M.klinik[c]:
+        if v <= 0:
+          continue
+        if len(set(M.fri_skilyrt[s]) & M.klinik_vikur.get(c, {}).get(v, set())) == 0:
+          continue
+        for d in M.klinik[c][v]:
+          likan.addConstr(x[s,c,v,d] == 0, name=f'c5_fri_skilyrt_{s}_{c}_{v}_{d}')
 
   # 6. Fyrirfram ákveðnar skráningar
   for s in M.akvedin_rodun:
@@ -205,13 +226,15 @@ def generate_model(M):
         likan.addConstr(
           gp.quicksum(
             x[s,c,v,d] for v in M.akvedin_rodun[s][c]['vikur'] for d in M.klinik[c][v]
-          ) == M.nemendaskraning[s][c]
+          ) == M.nemendaskraning[s][c],
+          name=f'c6_akvedin_rodun_{s}_{c}'
         )
       else:
         likan.addConstr(
           gp.quicksum(
             x[s,c,v,d] for v in M.akvedin_rodun[s][c]['vikur'] for d in M.akvedin_rodun[s][c]['deildir'] if d in M.klinik[c][v]
-          ) == M.nemendaskraning[s][c]
+          ) == M.nemendaskraning[s][c],
+          name=f'c6_akvedin_rodun_{s}_{c}'
         )
 
   # Dreifa jafnt á vikur; mjúk skorða

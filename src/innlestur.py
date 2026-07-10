@@ -159,8 +159,14 @@ def lesa_namskeid(df, namskeid=None):
       if row['höfuðborgarsvæði'] == 0 or row['höfuðborgarsvæði'] == '':
         hofudborgarsvaedi = False
 
-      # Getur verið tómur strengur
-      stadsetning = row['staður']
+      # Getur verið tómur strengur. Strippum bæði deild og staður hér - allar
+      # tilvísanir í þau annars staðar (akvedin_rodun, sama_deild, sami_stadur
+      # o.fl.) fara í gegnum clean_split(), sem strippar - án þessa geta tvær
+      # eins deildir/staðir sem eingöngu greinast á bili í lok strengs (t.d.
+      # "Heilsugæslan Ísafirði " á móti "Heilsugæslan Ísafirði") aldrei parað
+      # saman, sem gerir annars gilda "ákveðin röðun" óstuðlanlega.
+      deild_nafn = str(row['deild']).strip()
+      stadsetning = str(row['staður']).strip()
 
       vidfang = row['viðfang']
       if row['viðfang'] == '':
@@ -173,7 +179,7 @@ def lesa_namskeid(df, namskeid=None):
         plass = int(plass)
       except ValueError:
         raise Exception(f'Pláss verður að vera heiltala, fann {plass} í mrs skjali.')
-      vikur[row['vika']][row['deild']] = Deild(row['deild'], vidfang, plass, stadsetning, hofudborgarsvaedi, postnumer, row['deildarstjóri'], row['netfang'], row['símanúmer'])
+      vikur[row['vika']][deild_nafn] = Deild(deild_nafn, vidfang, plass, stadsetning, hofudborgarsvaedi, postnumer, row['deildarstjóri'], row['netfang'], row['símanúmer'])
     except KeyError as kerr:
       if namskeid is not None:
         raise Exception(f'Vantar dálkinn {kerr} í mrs skjali undir {namskeid}.')

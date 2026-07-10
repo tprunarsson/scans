@@ -160,7 +160,9 @@ def generate_model(M):
       for c in M.klinik
       for v in M.klinik[c] if v > 0
       for d in M.klinik[c][v]
-      if len(set(M.fri_osk[s]) & set(M.klinik_vikur[c][v])) > 0
+      # .get() en ekki bein vísun: MRS/Deildir gögnin (M.klinik) geta haft viku
+      # sem klinik_vikur (byggt úr stundatöflu) þekkir ekki - sjá model_generator.py
+      if len(set(M.fri_osk[s]) & M.klinik_vikur.get(c, {}).get(v, set())) > 0
     ) * vigt_fri_osk
     , sense='minimize'
   )
@@ -223,7 +225,7 @@ def generate_model(M):
       for c in M.klinik
       for v in M.klinik[c] if v > 0
       for d in M.klinik[c][v]
-      if len(set(M.fri_skilyrt[s]) & set(M.klinik_vikur[c][v])) > 0
+      if len(set(M.fri_skilyrt[s]) & M.klinik_vikur.get(c, {}).get(v, set())) > 0
     ) == 0
   )
 

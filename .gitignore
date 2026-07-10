@@ -13,3 +13,8 @@ gas/.clasp.json
 # under data/, so it's untouched.
 data/*/input*.json
 data/*/output*.json
+
+# docs/<year>/ holds real historical xlsx inputs and everything generated
+# from them (input.json, output.json, recreated mrs_radad_*.xlsx) - no
+# anonymized stand-in exists for these, so the whole tree stays out of git.
+/docs/

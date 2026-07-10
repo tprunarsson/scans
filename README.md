@@ -27,7 +27,7 @@ inniheldur skriftukóðann sem keyrir *í* því skjali.
 ## `src/` - líkanið sjálft
 
 ```
-python3 src/main.py input.json [output.json] [--solver gurobi|scip]
+python3 src/main.py input.json [output.json] [--solver highs|gurobi|scip|highs-parallel]
 ```
 
 Uppsetning:
@@ -60,6 +60,7 @@ Skráaryfirlit:
 | `model_generator_highs_parallel.py` | Sama og `model_generator_highs.py`, en þvingar HiGHS til að nota samhliða leit (sjá "Að bera saman leysa" að neðan) |
 | `solution_check.py` | Mannlæsilegar aðvaranir um mjúkar skorður sem ekki tókst að uppfylla |
 | `utkoma.py` | Býr til output.json úr leystu líkani |
+| `iis_greining.py` | Greinir hvers vegna líkan er óstuðlanlegt (infeasible) með Gurobi's computeIIS() - sjá athugasemd í skránni sjálfri |
 | `model_data.py`, `deild.py`, `nemandi.py`, `vikur.py`, `postur.py` | Gagnaform og hjálparföll (sjá útskýringar í hverri skrá) |
 
 Vísanakerfið sem er notað út um allan kóðann (`s`/`c`/`v`/`d` fyrir
@@ -114,6 +115,67 @@ scip                    0.30s     18.98s     19.28s        -1274695.00
 Allir leysar fundu sama hlutlægisgildi - líkönin eru samhljóða.
 ```
 
+### Fleiri en eitt gagnasafn - hvernig leysar skala
+
+`benchmark.py` tekur við mörgum input.json slóðum í einu og prentar að lokum
+eina sameiginlega samantekt þvert á þau öll - gagnlegt til að sjá hvort
+hraðamunur leysa haldist eins þegar líkön stækka, ekki bara á einu prófunar-
+gagnasafni:
+
+```
+python3 benchmark.py ../docs/1year/input.json ../docs/2year/input.json \
+  ../docs/3year/input.json ../docs/4year/input.json \
+  --solvers gurobi,highs,highs-parallel,scip --time-limit 180
+```
+
+`--time-limit SEK` setur hámarks lausnartíma per leysi (allir þrír styðja
+þetta - Gurobi `TimeLimit`, SCIP `limits/time`, HiGHS `time_limit`).
+Nauðsynlegt fyrir SCIP á stærri gagnasöfnum - án tímamarka lenti það í
+"numerical troubles" á `docs/3year` og hékk án framfara í >30mín þar til
+keyrslan var drepin handvirkt. Ef tímamörk nást áður en besta lausn er
+staðfest er besta lausn sem fannst samt birt, merkt `(?)`.
+
+Niðurstöður á öllum fjórum sögulegu gagnasöfnunum (`docs/1year`–`4year`,
+Apple M4 Max, `--time-limit 180`):
+
+```
+Gagnasafn    Leysir             Uppbygging      Lausn    Samtals     Hlutlægisgildi
+----------------------------------------------------------------------------------------------
+1year        gurobi                  0.04s      0.02s      0.05s            7708.00
+1year        highs                   0.04s      0.06s      0.09s            7708.00
+1year        highs-parallel          0.03s      0.05s      0.09s            7708.00
+1year        scip                    0.05s      0.16s      0.22s            7708.00
+2year        gurobi                  0.03s      0.02s      0.05s            8096.00
+2year        highs                   0.03s      0.05s      0.08s            8096.00
+2year        highs-parallel          0.03s      0.05s      0.08s            8096.00
+2year        scip                    0.03s      0.20s      0.23s            8096.00
+3year        gurobi                  0.81s      1.32s      2.14s         -133535.00
+3year        highs                   0.77s     84.20s     84.97s         -133535.00
+3year        highs-parallel          0.76s     84.78s     85.54s         -133535.00
+3year        scip                    0.92s    180.03s    180.95s    701873884.83 (?)
+4year        gurobi                  0.27s      0.14s      0.41s        -1274695.00
+4year        highs                   0.29s      0.60s      0.89s        -1274695.00
+4year        highs-parallel          0.27s      0.59s      0.86s        -1274695.00
+4year        scip                    0.30s     44.23s     44.53s        -1274695.00
+```
+
+Athugasemdir:
+- Á litlu gagnasöfnunum (1year, 2year) er nánast enginn munur - allir leysar
+  klára á broti úr sekúndu og finna sama hlutlægisgildi.
+- Á `3year` (stærst, ~88þ. breytur - einnig gagnasafnið sem olli
+  "numerical troubles" hjá SCIP) vinnur Gurobi afgerandi (2.14s). HiGHS og
+  HiGHS-parallel eru bæði ~85s (staðfestir aftur að samhliða leit hjálpar
+  ekki hér). **SCIP nær ekki bestu lausn innan 3ja mínútna** - besta gildi
+  sem það fann (701873884.83, ekki staðfest) er víðsfjarri réttu svari
+  (-133535).
+- Á `4year` er Gurobi hraðast (0.41s), HiGHS rétt á eftir (~0.89s), og SCIP
+  er hægt en finnur þó rétt svar (-1274695) á 44.5s.
+- Niðurstaðan: forskot Gurobi á HiGHS vex verulega með stærð líkansins - það
+  sem leit út eins og lítill munur á litlu prófunargagnasafni verður að
+  tugum sekúndna mun á stærsta raunverulega gagnasafninu. Þetta er vert að
+  hafa í huga ef Gurobi-leyfi er til staðar og hraði skiptir máli á stórum
+  árgöngum.
+
 ### Af hverju vika/dagsetning skiptir máli
 
 `innlestur.py` athugar að vikunúmer og dagsetning í `Lotur` blaðinu passi
@@ -154,16 +216,40 @@ notkun.
 
 Hver `tX/` mappa inniheldur upprunalegu þrjú Excel-skjölin
 (`skraningar.xlsx`, `mrs_stadlad.xlsx`, `auka_upplysingar.xlsx`) fyrir eitt
-sögulegt gagnasafn, og ef keyrsla hefur verið framkvæmd fyrir það gagnasafn,
-líka `input.json`/`output.json` parið sem varð til.
+sögulegt gagnasafn. `example_input.json` (rót `data/`) er eina skjalið hér
+sem er í git - staðgengill fyrir alvöru `input.json` með nöfnum/kennitölum/
+símanúmerum nemenda og deildarstjóra skipt út fyrir tilbúin gildi (sjá
+`anonymize_example.py`), notað í `benchmark.py`/prófunum án þess að alvöru
+persónugögn þurfi að vera í boði.
 
-`sameina_gogn.py` les þessi þrjú Excel-skjöl úr einni möppu og býr til eitt
-sameinað, normalíserað `.xlsx` skjal (sama snið og Google Sheet
-vinnuskjalið notar, með dropdown-staðfestingu tilbúinni) - nota til að "sá"
-(seed) vinnuskjalið með sögulegum gögnum ef þörf er á:
+Flutningsskriftur (allar taka `--help`-laust inn/út slóðir sem rök):
+- `sameina_gogn.py <mappa> <útskjal.xlsx>` - les þrjú upprunaleg Excel-skjöl
+  úr einni möppu og býr til eitt sameinað, normalíserað `.xlsx` skjal (sama
+  snið og Google Sheet vinnuskjalið notar, með dropdown-staðfestingu
+  tilbúinni) - nota til að "sá" (seed) vinnuskjalið með sögulegum gögnum.
+- `xlsx_til_json.py <sameinad.xlsx> <input.json>` - breytir sameinaða
+  skjalinu í input.json, sama snið og "Sækja gögn" í Google Sheet skilar -
+  til að prófa `src/main.py` án þess að fara í gegnum Sheets.
+- `mrs_radad_ur_json.py <output.json> <útmappa>` - endurskapar upprunalegu
+  `mrs_radad_<námskeið>.xlsx` skjölin úr output.json (sjá `docs/` að neðan).
+- `anonymize_example.py <mappa> <example.json>` - skiptir út
+  nöfnum/kennitölum/símanúmerum fyrir tilbúin gildi, notað til að útbúa
+  `example_input.json`.
+
+## `docs/` - raunveruleg söguleg gögn (aldrei í git)
+
+`docs/1year`–`4year` innihalda raunveruleg (ekki nafnlaus) inntaksskjöl fyrir
+fjögur skólaár - `.gitignore`d í heild sinni (sjá athugasemd þar) þar sem
+engin nafnlaus útgáfa er til fyrir þessi gögn, ólíkt `data/`.
+
+`keyra_prof.sh` (rót `scans/`) keyrir alla leiðina fyrir hvert ár í `docs/`:
+sameinar xlsx skjölin, breytir í input.json, leysir (sjálfgefið `--solver
+highs`), og endurskapar `mrs_radad_*.xlsx` í `radad_nytt/` - gagnlegt til að
+staðfesta að breytingar á `src/` virki enn á raunverulegum, sögulegum gögnum,
+ekki bara `data/example_input.json`:
 
 ```
-python3 sameina_gogn.py t0 t0/sameinad.xlsx
+./keyra_prof.sh [--solver highs|gurobi|scip|highs-parallel]
 ```
 
 ## Hvers vegna JSON, ekki Excel
